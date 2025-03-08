@@ -8,6 +8,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+#include "tinytiffwriter.h"
+
 #define WINDOW_WIDTH 400
 #define WINDOW_HEIGHT 200
 #define BUTTON_WIDTH 150
@@ -182,109 +184,22 @@ void HandleConversion(HWND hwnd) {
     }
 }
 
-void write_simple_tiff(wchar_t *filename, void *image_data, size_t pixel_size, size_t data_size, int bitpix, int naxis1, int naxis2) {
-    // FILE *tif = fopen(filename, "wb");
-    FILE *tif;
-    _wfopen_s(&tif, filename, L"wb");
-    if (!tif) {
-        ShowError(NULL, L"Error opening TIFF file for writing");
-        return;
+uint8_t write_simple_tiff(const char *filepath, void *image_data, int bitpix, size_t width, size_t height, uint8_t channels) {
+    TinyTIFFWriterFile* tif=TinyTIFFWriter_open(filepath, bitpix, TinyTIFFWriter_UInt, channels, width, height, TinyTIFFWriter_AutodetectSampleInterpetation);
+    if (tif) {
+        // const uint8_t* data=readImage();
+        if (TINYTIFF_TRUE != TinyTIFFWriter_writeImage(tif, image_data)) {
+            ShowError(NULL, L"TinyTIFFWriter_writeImage failed");
+            TinyTIFFWriter_close(tif);
+            return 0;
+        }
+        TinyTIFFWriter_close(tif);
+    } else {
+        ShowError(NULL, L"Could not create TIF writer");
+        return 0;
     }
 
-    // Write the TIFF header (8 bytes)
-    uint16_t magic_number = 0x4949;  // Little-endian (0x4949 corresponds to "II" in ASCII)
-    fwrite(&magic_number, sizeof(magic_number), 1, tif);  // Byte order
-    uint16_t version = 42;  // TIFF version number
-    fwrite(&version, sizeof(version), 1, tif);  // TIFF version
-
-    // Offset to IFD (Image File Directory)
-    uint32_t ifd_offset = 8 + sizeof(uint32_t);  // 8 bytes for the header + 4 bytes for IFD offset
-    fwrite(&ifd_offset, sizeof(ifd_offset), 1, tif);  // Offset to IFD (will be set to 8 in this simple case)
-
-    // Image File Directory (IFD)
-    uint16_t num_entries = 8;  // Number of entries in the IFD (we're using 8 here)
-    fwrite(&num_entries, sizeof(num_entries), 1, tif);
-
-    // IFD entries: key-value pairs (Tag, Type, Count, Value)
-    // 1. ImageWidth (Tag: 256, Type: SHORT, Count: 1, Value: width of the image)
-    uint16_t tag = 256;  // Tag for ImageWidth
-    uint16_t type = 3;  // Type SHORT (2 bytes)
-    uint32_t count = 1;  // One element (width)
-    uint32_t value = naxis1;  // Image width
-    fwrite(&tag, sizeof(tag), 1, tif);
-    fwrite(&type, sizeof(type), 1, tif);
-    fwrite(&count, sizeof(count), 1, tif);
-    fwrite(&value, sizeof(value), 1, tif);
-
-    // 2. ImageLength (Tag: 257, Type: SHORT, Count: 1, Value: height of the image)
-    tag = 257;  // Tag for ImageLength
-    value = naxis2;  // Image height
-    fwrite(&tag, sizeof(tag), 1, tif);
-    fwrite(&type, sizeof(type), 1, tif);
-    fwrite(&count, sizeof(count), 1, tif);
-    fwrite(&value, sizeof(value), 1, tif);
-
-    // 3. BitsPerSample (Tag: 258, Type: SHORT, Count: 1, Value: bit depth)
-    tag = 258;  // Tag for BitsPerSample
-    value = (bitpix == 8) ? 8 : 16;  // 8 bits per pixel or 16 bits per pixel
-    fwrite(&tag, sizeof(tag), 1, tif);
-    fwrite(&type, sizeof(type), 1, tif);
-    fwrite(&count, sizeof(count), 1, tif);
-    fwrite(&value, sizeof(value), 1, tif);
-
-    // 4. Compression (Tag: 259, Type: SHORT, Count: 1, Value: 1 for no compression)
-    tag = 259;  // Tag for Compression (no compression)
-    value = 1;  // No compression
-    fwrite(&tag, sizeof(tag), 1, tif);
-    fwrite(&type, sizeof(type), 1, tif);
-    fwrite(&count, sizeof(count), 1, tif);
-    fwrite(&value, sizeof(value), 1, tif);
-
-    // 5. PhotometricInterpretation (Tag: 262, Type: SHORT, Count: 1, Value: 1 for grayscale)
-    tag = 262;  // Tag for PhotometricInterpretation
-    value = 1;  // Grayscale image (black and white)
-    fwrite(&tag, sizeof(tag), 1, tif);
-    fwrite(&type, sizeof(type), 1, tif);
-    fwrite(&count, sizeof(count), 1, tif);
-    fwrite(&value, sizeof(value), 1, tif);
-
-    // 6. RowsPerStrip (Tag: 278, Type: SHORT, Count: 1, Value: height of the image)
-    tag = 278;  // Tag for RowsPerStrip
-    value = naxis2;  // Rows per strip (equal to the image height in this case)
-    fwrite(&tag, sizeof(tag), 1, tif);
-    fwrite(&type, sizeof(type), 1, tif);
-    fwrite(&count, sizeof(count), 1, tif);
-    fwrite(&value, sizeof(value), 1, tif);
-
-    // 7. StripOffsets (Tag: 273, Type: LONG, Count: 1, Value: Offset to the image data)
-    tag = 273;  // Tag for StripOffsets
-    uint32_t strip_offset = 8 + sizeof(uint32_t) + num_entries * 12 + 4;  // 8 for the header + IFD offset + IFD entries
-    fwrite(&tag, sizeof(tag), 1, tif);
-    uint16_t type_long = 4;  // Type LONG (4 bytes)
-    fwrite(&type_long, sizeof(type_long), 1, tif);
-    fwrite(&count, sizeof(count), 1, tif);
-    fwrite(&strip_offset, sizeof(strip_offset), 1, tif);
-
-    // 8. SampleFormat (Tag: 339, Type: SHORT, Count: 1, Value: 1 for unsigned integer)
-    tag = 339;  // Tag for SampleFormat
-    value = 1;  // Unsigned integer
-    fwrite(&tag, sizeof(tag), 1, tif);
-    fwrite(&type, sizeof(type), 1, tif);
-    fwrite(&count, sizeof(count), 1, tif);
-    fwrite(&value, sizeof(value), 1, tif);
-
-    // Write the IFD offset (end of IFD)
-    uint32_t ifd_end_offset = 0;  // No further IFD entries
-    fwrite(&ifd_end_offset, sizeof(ifd_end_offset), 1, tif);
-
-    // Write the pixel data (image data)
-    // for (int row = 0; row < naxis2; row++) {
-    //     fwrite((uint8_t*)image_data + row * naxis1 * (bitpix / 8), 1, naxis1 * (bitpix / 8), tif);
-    // }
-    fwrite(image_data, pixel_size, data_size, tif);
-
-    // Close the TIFF file
-    fclose(tif);
+    return 1;
 }
 
 int ConvertFITtoTIF(const wchar_t* inputPath) {
@@ -432,15 +347,6 @@ int ConvertFITtoTIF(const wchar_t* inputPath) {
     }
     free(tmpPixel);
 
-    // Create output filename (replace .FIT with .TIF)
-    wchar_t outputPath[MAX_PATH];
-    wcscpy_s(outputPath, MAX_PATH, inputPath);
-    wchar_t* ext = wcsrchr(outputPath, L'.');
-    if (ext) {
-        wcscpy_s(ext, 5, L".TIF");
-        // wcscpy_s(ext, 5, L".JPG");
-    }
-
     uint8_t *data_8bit = (uint8_t *)malloc(width * height * channels);
     if (!data_8bit) {
         ShowError(NULL, L"Could not allocate memory for image data");
@@ -464,142 +370,30 @@ int ConvertFITtoTIF(const wchar_t* inputPath) {
         goto cleanup;
     }
 
+    // Create output filename (replace .FIT with .TIF)
+    wchar_t filepath_w[MAX_PATH];
+    wcscpy_s(filepath_w, MAX_PATH, inputPath);
+    wchar_t* ext = wcsrchr(filepath_w, L'.');
+    if (ext) {
+        wcscpy_s(ext, 5, L".TIF");
+        // wcscpy_s(ext, 5, L".JPG");
+    }
+
+    // filepath to simple char array
+    char filepath[MAX_PATH];
+    wcstombs(filepath, filepath_w, MAX_PATH);
+
     // write png version
-    // char filepath[MAX_PATH];
-    // wcstombs(filepath, outputPath, MAX_PATH);
-    // if (!stbi_write_jpg(filepath, width, height, channels, data_8bit, 100)) {
-    //     ShowError(NULL, L"Could not write image data");
-    //     goto cleanup;
-    // }
+    if (!stbi_write_jpg(filepath, width, height, channels, data_8bit, 100)) {
+        ShowError(NULL, L"Could not write image data");
+        goto cleanup;
+    }
 
-    write_simple_tiff(outputPath, image_data, pixel_size, data_size, bitpix, width, height);
-
-    // Open output file
-    // _wfopen_s(&outFile, outputPath, L"wb");
-    // if (!outFile) {
-    //     ShowError(NULL, L"Could not create output file");
-    //     goto cleanup;
-    // }
-
-    // Write TIFF header and data
-    // TIFF Header structure (Little-endian)
-    /*
-    uint8_t tiffHeader[] = {
-        // Byte order (II = little-endian)
-        0x49, 0x49,                 // "II"
-        0x2A, 0x00,                 // TIFF version (42)
-        
-        // Offset to first IFD
-        0x08, 0x00, 0x00, 0x00,    // Offset to IFD (8 bytes)
-
-        // Image File Directory (IFD)
-        0x0E, 0x00,                 // Number of directory entries (14)
-
-        // ImageWidth tag
-        0x00, 0x01,                 // Tag ID (ImageWidth)
-        0x04, 0x00,                 // Data type (LONG)
-        0x01, 0x00, 0x00, 0x00,    // Count
-        (uint8_t)width, (uint8_t)(width >> 8), (uint8_t)(width >> 16), (uint8_t)(width >> 24),
-
-        // ImageLength tag
-        0x01, 0x01,                 // Tag ID (ImageLength)
-        0x04, 0x00,                 // Data type (LONG)
-        0x01, 0x00, 0x00, 0x00,    // Count
-        (uint8_t)height, (uint8_t)(height >> 8), (uint8_t)(height >> 16), (uint8_t)(height >> 24),
-
-        // BitsPerSample tag
-        0x02, 0x01,                 // Tag ID (BitsPerSample)
-        0x03, 0x00,                 // Data type (SHORT)
-        (uint8_t)channels, 0x00, 0x00, 0x00,    // Count (1 or 3)
-        0x08, 0x00, 0x08, 0x00,    // 8 bits per sample (if more space needed, use offset)
-
-        // Compression tag
-        0x03, 0x01,                 // Tag ID (Compression)
-        0x03, 0x00,                 // Data type (SHORT)
-        0x01, 0x00, 0x00, 0x00,    // Count
-        0x01, 0x00, 0x00, 0x00,    // No compression (1)
-
-        // PhotometricInterpretation tag
-        0x06, 0x01,                 // Tag ID
-        0x03, 0x00,                 // Data type (SHORT)
-        0x01, 0x00, 0x00, 0x00,    // Count
-        (uint8_t)(channels == 1 ? 1 : 2), 0x00, 0x00, 0x00,  // 1 = BlackIsZero, 2 = RGB
-
-        // StripOffsets tag
-        0x11, 0x01,                 // Tag ID
-        0x04, 0x00,                 // Data type (LONG)
-        0x01, 0x00, 0x00, 0x00,    // Count
-        0x00, 0x01, 0x00, 0x00,    // Offset to image data (256)
-
-        // SamplesPerPixel tag
-        0x15, 0x01,                 // Tag ID
-        0x03, 0x00,                 // Data type (SHORT)
-        0x01, 0x00, 0x00, 0x00,    // Count
-        (uint8_t)channels, 0x00, 0x00, 0x00,    // Samples per pixel (1 or 3)
-
-        // RowsPerStrip tag
-        0x16, 0x01,                 // Tag ID
-        0x04, 0x00,                 // Data type (LONG)
-        0x01, 0x00, 0x00, 0x00,    // Count
-        (uint8_t)height, (uint8_t)(height >> 8), (uint8_t)(height >> 16), (uint8_t)(height >> 24),
-
-        // StripByteCounts tag
-        0x17, 0x01,                 // Tag ID
-        0x04, 0x00,                 // Data type (LONG)
-        0x01, 0x00, 0x00, 0x00,    // Count
-        (uint8_t)(data_size), (uint8_t)(data_size >> 8), 
-        (uint8_t)(data_size >> 16), (uint8_t)(data_size >> 24),
-
-        // XResolution tag
-        0x1A, 0x01,                 // Tag ID
-        0x05, 0x00,                 // Data type (RATIONAL)
-        0x01, 0x00, 0x00, 0x00,    // Count
-        0x00, 0x00, 0x00, 0x00,    // Offset to data (will be filled with 72 DPI)
-
-        // YResolution tag
-        0x1B, 0x01,                 // Tag ID
-        0x05, 0x00,                 // Data type (RATIONAL)
-        0x01, 0x00, 0x00, 0x00,    // Count
-        0x00, 0x00, 0x00, 0x00,    // Offset to data (will be filled with 72 DPI)
-
-        // ResolutionUnit tag
-        0x28, 0x01,                 // Tag ID
-        0x03, 0x00,                 // Data type (SHORT)
-        0x01, 0x00, 0x00, 0x00,    // Count
-        0x02, 0x00, 0x00, 0x00,    // Inches (2)
-
-        // Software tag
-        0x31, 0x01,                 // Tag ID
-        0x02, 0x00,                 // Data type (ASCII)
-        0x14, 0x00, 0x00, 0x00,    // Count (20 bytes including NULL)
-        0x46, 0x49, 0x54, 0x53, 0x20, 0x74, 0x6F, 0x20, 
-        0x54, 0x49, 0x46, 0x46, 0x20, 0x43, 0x6F, 0x6E,
-        0x76, 0x2E, 0x00, 0x00,    // "FITS to TIFF Conv."
-
-        // Next IFD offset (0 = no more IFDs)
-        0x00, 0x00, 0x00, 0x00,
-
-        // Resolution values (72 DPI = 72/1)
-        0x48, 0x00, 0x00, 0x00,    // 72
-        0x01, 0x00, 0x00, 0x00,    // 1
-        0x48, 0x00, 0x00, 0x00,    // 72
-        0x01, 0x00, 0x00, 0x00     // 1
-    };
-    */
-    
-
-    // Write TIFF header
-    // fwrite(tiffHeader, 1, sizeof(tiffHeader), outFile);
-
-    // Pad to offset 256 (where image data starts)
-    // size_t currentPos = sizeof(tiffHeader);
-    // while (currentPos < 256) {
-    //     fputc(0, outFile);
-    //     currentPos++;
-    // }
-
-    // Write the converted 8-bit image data
-    // fwrite(image_data, pixel_size, data_size, outFile);
+    // write tiff version
+    if (!write_simple_tiff(filepath, image_data, bitpix, width, height, channels)) {
+        ShowError(NULL, L"Could not write tiff image data");
+        goto cleanup;
+    }
 
     success = 1;
 
