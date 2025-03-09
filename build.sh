@@ -23,7 +23,7 @@ TARGET="fits_converter.exe"
 if [[ "$OS" == "Darwin" ]]; then
     CC=x86_64-w64-mingw32-gcc
 elif [[ "$OS" == "MINGW"* ]] || [[ "$OS" == "MSYS"* ]]; then
-    CC=gcc    
+    CC=mingw32-gcc    
 else
     echo "Unsupported operating system"
     exit 1
