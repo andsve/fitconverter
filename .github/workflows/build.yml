@@ -17,6 +17,7 @@ jobs:
     
     - name: Setup MSYS2
       uses: msys2/setup-msys2@v2
+      install: mingw-w64-x86_64-toolchain
       with:
         msystem: UCRT64
         platform: x64
